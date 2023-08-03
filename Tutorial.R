@@ -108,22 +108,23 @@ do_pause()
 
 # We see that NITRATE is available, so load it (along with TEMP and PSAL) from the NetCDF
 data = load_float_data( float_ids= WMO, # specify WMO number
-                        variables=c('PSAL','TEMP','NITRATE') # specify variables
+                        variables=c('PSAL','TEMP','NITRATE',"DOXY") # specify variables
 )
 
 names(data$Data[[paste0('F', WMO)]]) # show data that has been loaded into R
+
 
 do_pause()
 
 
 # Load the float data in the R with the format of data frame if "format" is specificed
 data_df = load_float_data( float_ids= WMO, # specify WMO number
-                        variables=c('PSAL','TEMP','NITRATE'), # specify variables,
+                        variables=c('PSAL','TEMP','NITRATE',"DOXY"), # specify variables,
                         format="dataframe" # specify format;  
 )
 
 colnames(data_df) # show data that has been loaded into R
-
+data_df$oxygen_sensor_calibration[1] # show the oxygne sensor calibration information
 
 # Show the trajectory of the downloaded float
 show_trajectories(float_ids=WMO, 

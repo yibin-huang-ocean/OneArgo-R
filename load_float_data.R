@@ -79,8 +79,7 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
 
   base_vars = c('CYCLE_NUMBER', 'DIRECTION', 'JULD', 'JULD_QC', 
                 'JULD_LOCATION','LATITUDE','LONGITUDE','POSITION_QC',
-                'PARAMETER_DATA_MODE','PARAMETER','DATA_MODE'
-                )
+                'PARAMETER')
 
   if ( any(variables=="ALL")  ) { 
     use_all_vars = 1;
@@ -114,6 +113,7 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
   
   
   # LOOP TO IMPORT PROFILES AND EXTRACT VARIABLES
+  n=1
   for ( n in 1:length(good_float_ids)) {
     floatnum = good_float_ids[n] 
     is_bgc_float = Float$type[which(Float$wmoid==floatnum)]=="bgc"
@@ -158,13 +158,8 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
             endsWith(all_vars[l],'dPRES')){
           next # these variables are only in Sprof files
         }
-      }
-      if (is_bgc_float==T) {
-        if(all_vars[l]== 'DATA_MODE'){
-          next # these variables are only in prof files
-        }
-      }
-      
+      } 
+  
       # Catch up the error 
       if (!names[l] %in% names(info$var) ){
         print (paste(names[l], 'not found in', FWMO)) # 防止读到没有的变量
@@ -174,41 +169,17 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
      
       if (names[l] %in% names(info$var) ){ # check if the variables in the Netcdf file 
         
-       if (names[l] == 'DATA_MODE') {
-          # emulate the set up fot bgc floats
-          
-          Mdata[[FWMO]][["PARAMETER_DATA_MODE"]]=matrix(rep(ncvar_get(info,names[l]),each=n_levels),
-                                          nrow=n_levels, ncol=n_prof)
-        }else{
-          Data[[FWMO]][[names[l]]] =ncvar_get(info,names[l])
-          Mdata[[FWMO]][[mnames[l]]] = Data[[FWMO]][[names[l]]]
-        }
-        
-        # CONVERT QUALITY FLAGS TO NUMERIC FORMAT
-        if (endsWith(names[l],'_QC') &&  # Check for QC identifier
-            !startsWith(names[l],'PROF')) { # But not a profile QC
-          # Vectorize
-          Data[[FWMO]][[names[l]]] = 
-            unlist(strsplit(Data[[FWMO]][[names[l]]], split=""))
-          # Replace blanks with zeros
-          Data[[FWMO]][[names[l]]] = gsub(" ", "0", Data[[FWMO]][[names[l]]])
-          # Convert to numeric
-          Data[[FWMO]][[names[l]]] = as.numeric(Data[[FWMO]][[names[l]]])
-          # Reshape
-          Data[[FWMO]][[names[l]]] = 
-            matrix(Data[[FWMO]][[names[l]]], nrow=n_levels, ncol=n_prof)
-        }
+        Data[[FWMO]][[names[l]]] = ncvar_get(info,names[l])
+        Mdata[[FWMO]][[mnames[l]]] = Data[[FWMO]][[names[l]]]
         
         # For measured variables
         if (length(info$var[[names[l]]]$dimids) == 2 &&
             all(info$var[[names[l]]]$dimids == 
                 c(dims$N_LEVELS$id, dims$N_PROF$id)) ) {
-         
-           if(names[l] !="PARAMETER_DATA_MODE"){
-            # Remove metadata fields
-            Mdata[[FWMO]][[mnames[l]]] = NULL
-            mnames[l] = NA
-           }
+          
+          # Remove metadata fields
+          Mdata[[FWMO]][[mnames[l]]] = NULL
+          mnames[l] = NA
           
         # For descriptive meta variables (1 value per profile)
         } else if (length(info$var[[names[l]]]$dimids) == 1 && 
@@ -221,12 +192,10 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
                      nrow=n_levels, ncol=n_prof)
           } else {
             
-            if(names[l]!="DATA_MODE"){
-              # transform one column variables into matrix 
-              Data[[FWMO]][[names[l]]] = 
-                matrix(rep(Data[[FWMO]][[names[l]]],each=n_levels),
-                       nrow=n_levels, ncol=n_prof)
-            }
+            # transform one column variables into matrix 
+            Data[[FWMO]][[names[l]]] = 
+              matrix(rep(Data[[FWMO]][[names[l]]],each=n_levels),
+                     nrow=n_levels, ncol=n_prof)
           }
           
           # Remove metadata fields
@@ -240,6 +209,7 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
           
           # Remove data fields
           Data[[FWMO]][[mnames[l]]] = NULL
+          
           names[l] = NA
         } 
       } 
@@ -251,37 +221,65 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
     names = names[!is.na(names)]
     mnames = mnames[!is.na(mnames)]
     
-    if("PARAMETER" %in% mnames){
-      temp=rep(NA,n_param)
-      for ( m in 1:n_param ) {
-        temp[m] = trim(Mdata[[FWMO]][['PARAMETER']][m,1,1])
-      }
-      params_keep = is.element(temp, new_vars)
-      Mdata[[FWMO]][['PARAMETER']] = temp[params_keep]
-    }
 
+    # CONVERT QUALITY FLAGS TO NUMERIC FORMAT
+    for (l in 1:length(names)) {
+      if (endsWith(names[l],'_QC') &&  # Check for QC identifier
+          !startsWith(names[l],'PROF')) { # But not a profile QC
+        # Vectorize
+        Data[[FWMO]][[names[l]]] = 
+            unlist(strsplit(Data[[FWMO]][[names[l]]], split=""))
+        # Replace blanks with zeros
+        Data[[FWMO]][[names[l]]] = gsub(" ", "0", Data[[FWMO]][[names[l]]])
+        # Convert to numeric
+        Data[[FWMO]][[names[l]]] = as.numeric(Data[[FWMO]][[names[l]]])
+        # Reshape
+        Data[[FWMO]][[names[l]]] = 
+            matrix(Data[[FWMO]][[names[l]]], nrow=n_levels, ncol=n_prof)
+      }
+    }
     
-    if("PARAMETER_DATA_MODE" %in% mnames){
-        # create data mode variable for each parameter
-        # expand that variable to match size of data matrix
+    
+    # parse parameter names
+    for (l in 1:length(mnames)) {
+      if (mnames[l] == 'PARAMETER') {
+        # extract parameter names as coherent strings
+	       temp=rep(NA,n_param)
+        for ( m in 1:n_param ) {
+          temp[m] = trim(Mdata[[FWMO]][[mnames[l]]][m,1,1])
+        }
+        params_keep = is.element(temp, new_vars)
+        Mdata[[FWMO]][[mnames[l]]] = temp[params_keep]
+      }
+    }
+      
+    # parse parameter data modes
+    if (is_bgc_float==T) {
+      for (l in 1:length(mnames)) {
+        if (mnames[l] == 'PARAMETER_DATA_MODE'){
+          # create data mode variable for each parameter
+          # expand that variable to match size of data matrix
           z=1
           for (m in 1:n_param) {
             if (params_keep[m]) { 
               Data[[FWMO]][[paste0(Mdata[[FWMO]]$PARAMETER[z],'_DATA_MODE')]] = 
                 matrix(
-                  rep(substr(Mdata[[FWMO]][["PARAMETER_DATA_MODE"]],m,m), each=n_levels),
+                  rep(substr(Mdata[[FWMO]][[mnames[l]]],m,m), each=n_levels),
                   nrow=n_levels, ncol=n_prof)
               z=z+1
             }
           }
+        }
+      }
+      # clear both parameter and parameter data mode from metadata
+      Mdata[[FWMO]]$PARAMETER = NULL
+      Mdata[[FWMO]]$PARAMETER_DATA_MODE = NULL
+    } else {
+      Mdata[[FWMO]]$PARAMETER = NULL
     }
     
-    
-    # clear both parameter and parameter data mode from metadata
-    Mdata[[FWMO]]$PARAMETER = NULL
-    Mdata[[FWMO]]$PARAMETER_DATA_MODE = NULL
-    Data[[FWMO]]$PARAMETER_DATA_MODE = NULL
 
+   
  
     # add information about deploying organization and PI to meta data
     Mdata[[FWMO]]$WMO_NUMBER = floatnum
@@ -301,7 +299,7 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
                       #        origin=as.Date("1950-01-01"), tz="UTC"))
      # )   # (Since year 1950)
 
-    names<-names(Data[[FWMO]])
+    names[length(names)+1] = 'TIME' # Add 'TIME' to list of variable names
     
     if (!is.null(float_profs)) {
       for (l in 1:length(names)) {
@@ -310,6 +308,23 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
       }
     }
   
+    # Extract the oxygen sensor calibration information 
+    # if the float is equipped with the O2 sensor 
+    
+    if (  any(grepl("DOXY_ADJUSTED", names(info$var))) ){ 
+    
+      oxygen_sensor_cal<- ncvar_get(info,names(info$var)[30]) [4]  # air-calibration 
+      oxygen_sensor_cal<- grepl("air",    oxygen_sensor_cal)
+      oxygen_sensor_cal[oxygen_sensor_cal=="FALSE"]="O2 sensor calibrated by WOA product" # Calibrate by WOA product 
+      oxygen_sensor_cal[oxygen_sensor_cal=="TRUE"]="O2 sensor calibrated by air" # Calibrate by the air measurement 
+      Data[[FWMO]]$oxygen_sensor_calibration=rep(    oxygen_sensor_cal,length(    Data[[FWMO]]$JULD))
+      
+    } else{
+      Data[[FWMO]]$oxygen_sensor_calibration="no oxygen sensor"
+    }
+    
+    
+   
     nc_close(info)
     
     print(paste("Progress:",n/length(good_float_ids)*100 ,"%" ))
@@ -355,8 +370,9 @@ load_float_data <- function (float_ids, variables=NULL, float_profs=NULL,format=
         
       } # end loop in number_variable_float_data
       
-      
+    
       float_data_single_dtfr$WMOID= names(Data[i])  # add the WMOID in data frame 
+      
       
       
       #  assign data frame into the list array 
